@@ -1,156 +1,131 @@
-# ML Research & Coding Prompt Grammar
+# ML Research & Coding Prompt Contract
 
 MODE:
 [RESEARCH / IMPLEMENT / MODIFY / DEBUG / EVALUATE]
 
 TASK:
-[明确描述本次只需要 AI 完成的具体任务。不要写长期目标。]
+[本次只要求 Agent 完成的任务。]
 
 GOAL:
-[本次任务最终希望达到的结果，或者希望通过本次工作回答的问题。]
+[期望结果或本次工作要回答的问题。]
 
 HYPOTHESIS:
-[如果本次任务属于研究实验，写清楚待验证的假设。]
-[推荐结构：If ..., then ..., because ...]
-[非研究实验任务可删除本模块。]
+[仅 RESEARCH：If X, then Y, because Z。]
 
 CURRENT_STATE:
-[只写理解当前任务不可缺少的现状。]
-- Current model:
-- Current pipeline:
-- Current baseline:
-- Current performance:
-- Relevant files:
-- Completed work:
-- Known problems:
+[仅保留理解任务所必需的现状、baseline、相关文件和已知问题。]
 
 INPUTS:
-[只保留当前任务实际涉及的项目。]
-- DATA:
-- MODEL:
-- CHECKPOINT:
-- CONFIG:
-- CODE:
-- REFERENCES:
+[数据、模型、checkpoint、config、代码或参考资料。无则删除。]
 
 DECISIONS:
-[填写已经由我确定的高影响决策。AI 不应重新选择或修改这些决策。]
-- 
-- 
+[每行：- [scope] subject OP value。已确定且不得重新选择的高影响决策。]
+-
 
 CONSTRAINTS:
-[填写当前任务必须遵守的硬性限制。没有相关限制的类别直接删除。]
+[无约束可写 NONE；否则保留下列相关类别并使用原子语法。]
 
 COMPUTE:
-- 
+-
 
 DATA:
-- 
+-
 
 MODEL:
-- 
+-
 
 ENVIRONMENT:
-- 
+-
 
 COMPATIBILITY:
-- 
+-
 
 REPRODUCIBILITY:
-- 
+-
 
 TIME / COST:
-- 
+-
 
 CHANGE_SCOPE:
-[修改已有项目时使用。新项目可以删除本模块。]
+[仅 MODIFY；必须填写 MAY_CHANGE 与 MUST_PRESERVE。]
 
 MAY_CHANGE:
-- 
+-
 
 MUST_PRESERVE:
-- 
+-
 
 EXPERIMENT:
-[如果本任务涉及机器学习实验，明确实验设计。非实验任务可以删除。]
+[仅 RESEARCH；以下 material requirement 使用原子语法。]
 
 VARIABLE:
-[本次实验主动改变的变量。]
+-
 
 CONTROL:
-[为了保证公平比较，需要保持不变的变量。]
+-
 
 TRAINING:
-- Dataset / split:
-- Training strategy:
-- Hyperparameters:
-- Epochs / steps:
-- Batch size:
-- Optimizer:
-- Learning rate:
-- Seed:
+-
 
 EVALUATION:
-- Evaluation dataset:
-- Evaluation protocol:
-- Baseline:
-- Comparison method:
+-
 
 METRICS:
-- Primary metric:
-- Secondary metrics:
+-
 
 SEEDS:
-- 
+-
+
+DEBUG_SPEC:
+[仅 DEBUG。EXPECTED/OBSERVED 写事实；REPRODUCTION/EVIDENCE 至少保留一个。]
+
+EXPECTED:
+[预期行为。]
+
+OBSERVED:
+[实际行为。]
+
+REPRODUCTION:
+[可复现条件。]
+
+EVIDENCE:
+[已有日志、错误或观察。]
+
+EVALUATION_SPEC:
+[仅 EVALUATE。]
+
+TARGET:
+[使用原子语法表达评价对象。]
+
+PROTOCOL:
+[使用原子语法表达评价协议。]
+
+METRICS:
+-
 
 OUTPUT:
-[明确要求最终交付的 artifact，而不仅仅是“完成任务”。]
-- Code:
-- Config:
-- Script:
-- Checkpoint:
-- Logs:
-- Metrics:
-- Tables / figures:
-- Report:
-- Documentation:
+[最终交付的 artifact。]
 
 ACCEPTANCE:
+[至少一个可判定的原子检查；result scope 推荐用于最终状态。]
 
 ENGINEERING:
-[定义工程上什么情况下可以认为任务完成。]
-- 
-- 
-- 
+- [result] tests.failed = 0
 
 RESEARCH:
-[定义什么情况下本次实验足以回答研究问题。实验结果不需要一定优于 baseline。]
-- 
-- 
-- 
+-
 
 DON'T:
-[只填写真正危险、不可逆或会污染实验的行为。]
-- 
-- 
+[用原子约束表达禁止状态，例如：- [*] data.split != test。]
+-
 
 DELEGATED:
-[明确知道存在这些决策，但主动授权 AI 自行处理。只放低影响决策。]
-- 
-- 
+[每行：- [scope] subject delegated。]
+-
 
 OPEN_QUESTIONS:
-[填写当前已知但尚未解决的问题。]
-- 
-- 
+[每行：- [HIGH|LOW] subject — question。HIGH 会阻塞执行；无问题写 NONE。]
+-
 
 EXECUTION_RULE:
-Before implementation, verify that all high-impact decisions required for this task are either RESOLVED in this document or explicitly DELEGATED.
-
-Do not silently resolve high-impact ambiguity.
-
-Do not change DECISIONS, CONSTRAINTS, MUST_PRESERVE, experimental controls, dataset splits, evaluation protocols, or baselines unless explicitly authorized.
-
-If a high-impact unresolved issue prevents valid implementation or experimentation, stop and report it instead of making an assumption.
-
-Otherwise, execute the task directly and preserve the experimental validity and reproducibility of the project.
+Run the deterministic Prompt Readiness Gate before execution. Do not silently resolve high-impact ambiguity or change declared decisions, constraints, controls, baselines, or evaluation conditions.

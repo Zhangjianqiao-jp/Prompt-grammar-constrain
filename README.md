@@ -121,7 +121,11 @@ Prompt-grammar-constrain/
     └── skills/
         └── prompt-readiness-gate/
             ├── SKILL.md
+            ├── profiles/ml-research.json
+            ├── scripts/prompt_lint.py
+            ├── tests/test_prompt_lint.py
             └── references/
+                ├── contract.md
                 └── design-basis.md
 ```
 
@@ -133,13 +137,21 @@ Prompt-grammar-constrain/
 
 `templates/ml-research-coding-prompt-compact.md`
 
-精简版本，适合熟悉项目中的日常实现、较小修改和低风险实验。
+精简版本，仅用于日常 `IMPLEMENT`；其他 MODE 使用完整版。
 
 ### Validator Skill
 
 `.agents/skills/prompt-readiness-gate/SKILL.md`
 
-运行时验证规则。它只保留触发条件、验证逻辑、Hard Gate 行为和输出协议，尽量减少正常使用时的 token 开销。
+薄运行时入口，只负责调用确定性 linter 和执行 Hard Gate，尽量减少正常使用时的 token 开销。
+
+`.agents/skills/prompt-readiness-gate/scripts/prompt_lint.py`
+
+零第三方依赖的静态验证器：解析结构、执行 MODE profile、构建原子约束并报告带行号的冲突。
+
+`.agents/skills/prompt-readiness-gate/references/contract.md`
+
+只有用户需要编写或修复结构化 Prompt 时才加载的语法说明。
 
 `.agents/skills/prompt-readiness-gate/references/design-basis.md`
 
@@ -189,7 +201,7 @@ Prompt-grammar-constrain/
 
 ## Prompt Readiness Gate
 
-当前 Validator 进行七类概念检查。
+当前 V2 Validator 是一个确定性静态 linter；以下检查均由代码执行，不由执行模型自行评分。
 
 ### 1. Structure
 
@@ -197,20 +209,15 @@ Prompt-grammar-constrain/
 
 ### 2. Atomic Requirement Normalization
 
-对重要的 decision、constraint、prohibition、experimental control 和 acceptance clause，内部按照轻量结构理解：
+重要的 decision、constraint、prohibition、experimental control 和 acceptance clause 必须显式使用可解析的原子语法：
 
 ```text
-condition/scope | subject/variable | modality | action/effect | object/value
+- [scope] subject OP value
 ```
 
-这不是要求用户学习新的形式语言，而是帮助 Validator 把自然语言 requirement 拆成更容易比较的原子语义单元。
+`OP` 支持 `= != < <= > >= in not-in`。字符串、数字、布尔值和有限集合会被解析为 typed value，而不是由 LLM 猜测含义。
 
-典型 modality 包括：
-
-- `MUST`
-- `MUST_NOT`
-- `DELEGATED/MAY`
-- descriptive statement
+委托使用 `- [scope] subject delegated`；未决问题必须显式标注 `[HIGH]` 或 `[LOW]`。
 
 ### 3. Underspecification 与 Determinacy
 
@@ -240,29 +247,13 @@ UNRESOLVED
 
 Validator 不应为了追求“完整”而强迫用户定义变量命名、helper function 组织等低影响实现细节。
 
-### 4. Ambiguity
+### 4. Ambiguity boundary
 
-并不是所有模糊表达都应该阻塞。
-
-只有当一个 clause 存在多个合理解释，并且这些不同解释会实质改变执行路径时，才应该被视为 blocking ambiguity。
-
-这样可以避免 Validator 因为普通语言风格差异而过度拦截。
+确定性 linter 不声称理解任意自然语言歧义。Material clause 如果没有使用原子语法会作为 `SYNTAX` blocker；事实背景和任务描述仍可使用自然语言，但不参与形式一致性证明。
 
 ### 5. Consistency
 
-Validator 重点比较约束同一 subject、artifact、variable 或 behavior 的 requirement。
-
-当前 Skill 使用 NLI 风格的三分类思路：
-
-```text
-ENTAILMENT
-NEUTRAL
-CONTRADICTION
-```
-
-`NEUTRAL` 不等于冲突。
-
-只有当两个 requirement 的条件可以同时成立，并且要求的 action/effect 互相不可兼容时，才应判定为真正的 contradiction。
+Validator 按 canonical `subject` 和 `scope` 聚合约束，求 equality、exclusion、numeric bound 与 finite set 的交集。空域即 `CONTRADICTION`，并返回导致空域的所有源行；不同命名 scope 默认独立，`*` 与每个 scope 同时生效。
 
 ### 6. Verifiability
 
@@ -276,7 +267,7 @@ CONTRADICTION
 
 ### 7. Minimality
 
-冗余、重复或低相关 context 默认只产生 warning，而不是 blocker，除非它们进一步造成歧义或冲突。
+完全重复的原子 requirement 产生 warning，而不是 blocker。
 
 这样可以同时避免 underspecification 和 uncontrolled specification growth。
 
@@ -424,11 +415,9 @@ Skill 本体只保存必要的验证规则，研究背景独立存储。可以�
 
 ## 缺点与当前局限
 
-### 1. V1 的语义验证仍然依赖 LLM
+### 1. 确定性边界不覆盖任意自然语言语义
 
-当前 Skill 虽然使用结构化规则判断 ambiguity、determinacy 和 contradiction，但尚未运行独立的 NLI 模型、theorem prover、SAT solver 或 SMT solver。
-
-因此目前不能称为 formal verification，Validator 仍然可能出现 false positive 和 false negative。
+V2 的 schema、parser、typed atomic constraints 和 conflict solver 均由代码执行；它不会让 LLM 把自由文本静默转换成逻辑。`READY` 只证明显式 profile 与已表达原子约束的一致性，不证明事实真实、需求完备或不同名字指向同一实体。
 
 ### 2. 目前还没有完成专门 Benchmark
 
@@ -470,29 +459,28 @@ Skill 本质上仍是 instruction-level gate，不能替代 sandbox、权限系�
 
 ## 当前状态
 
-**Status: experimental V1**
+**Status: experimental V2**
 
-V1 当前包含：
+V2 当前包含：
 
 - 完整 ML Prompt Grammar；
 - 精简 ML Prompt Grammar；
 - 项目初始化 Readiness Gate；
 - task-profile 结构检查；
-- high-impact decision coverage；
-- ambiguity check；
-- NLI-inspired contradiction reasoning；
+- 独立 Markdown parser 与精确 source location；
+- JSON profile 驱动的 MODE 条件 schema；
+- typed atomic requirement IR；
+- equality、set、exclusion 与 numeric-bound 冲突检测；
+- 显式 high-impact open-question gate；
 - acceptance verifiability；
 - redundancy warning；
 - 明确 `READY` / `NOT_READY` 行为。
 
-V1 尚未包含：
+V2 尚未包含：
 
-- 独立 parser；
-- deterministic schema validator；
 - 独立训练的 NLI conflict model；
-- Requirement AST/IR 实现；
 - SAT/SMT solver；
-- benchmark suite；
+- 真实项目 benchmark（当前只有行为回归测试）；
 - automatic prompt rewriting；
 - automatic high-impact decision selection。
 
@@ -502,9 +490,9 @@ V1 尚未包含：
 
 ## Roadmap
 
-### V1 — Prompt-level Gate
+### V1 — Prompt-level Gate（已完成，历史版本）
 
-当前阶段。目标是先验证这套概念是否真的能改善真实 ML Research/Coding Agent 的项目启动质量。
+最初由 LLM 指令执行的概念验证。
 
 计划构造和收集：
 
@@ -516,9 +504,9 @@ V1 尚未包含：
 - redundant context；
 - READY / NOT_READY 对照样本。
 
-### V2 — Deterministic Structural Validator
+### V2 — Deterministic Structural Validator（当前）
 
-把低层结构检查从 LLM 中移出，转成代码，例如：
+已把低层结构和可形式化冲突检查从 LLM 中移出：
 
 ```text
 parser
@@ -526,10 +514,11 @@ schema rules
 MODE-specific required fields
 placeholder detection
 duplicate-section detection
-basic acceptance checks
+typed atomic constraints
+empty-domain contradiction diagnostics
 ```
 
-此时 Skill 本体进一步变薄，只负责 orchestrate validator 和 Gate policy。
+Skill 本体只负责 orchestrate validator 和 Gate policy。
 
 ### V3 — Requirement Intermediate Representation
 
@@ -719,7 +708,11 @@ Prompt-grammar-constrain/
     └── skills/
         └── prompt-readiness-gate/
             ├── SKILL.md
+            ├── profiles/ml-research.json
+            ├── scripts/prompt_lint.py
+            ├── tests/test_prompt_lint.py
             └── references/
+                ├── contract.md
                 └── design-basis.md
 ```
 
@@ -731,13 +724,21 @@ The full ML research and coding specification template. It includes fields for r
 
 `templates/ml-research-coding-prompt-compact.md`
 
-A shorter version for routine use. It preserves the core semantic fields while reducing prompt overhead.
+A shorter `IMPLEMENT`-only version for routine work. Other modes use the full template.
 
 ### Validator Skill
 
 `.agents/skills/prompt-readiness-gate/SKILL.md`
 
-The runtime validation policy. It is intentionally compact and contains the trigger boundary, validation rules, hard-gate behavior, and output contract.
+The thin runtime entrypoint. It calls the deterministic linter and applies the hard-gate result.
+
+`.agents/skills/prompt-readiness-gate/scripts/prompt_lint.py`
+
+A zero-dependency static validator for parsing, MODE profiles, atomic constraints, and line-addressed conflict diagnostics.
+
+`.agents/skills/prompt-readiness-gate/references/contract.md`
+
+Syntax guidance loaded only when a user needs to write or repair a structured prompt.
 
 `.agents/skills/prompt-readiness-gate/references/design-basis.md`
 
@@ -787,7 +788,7 @@ A debugging task should distinguish expected behavior from observed behavior and
 
 ## Prompt Readiness Gate
 
-The current validator performs seven conceptual checks.
+The V2 validator is a deterministic static linter. The checks below are executed by code, not scored by the execution model.
 
 ### 1. Structure
 
@@ -797,20 +798,15 @@ Task-specific requirements are also checked. For example, `RESEARCH`, `MODIFY`, 
 
 ### 2. Atomic requirement normalization
 
-Material statements are internally interpreted in a lightweight structured form:
+Material decisions, constraints, controls, prohibitions, and acceptance clauses must use an explicit atomic form:
 
 ```text
-condition/scope | subject/variable | modality | action/effect | object/value
+- [scope] subject OP value
 ```
 
-The purpose is not to expose a formal language to the user. The representation is used as a reasoning aid for comparing constraints and detecting contradictions.
+`OP` supports `= != < <= > >= in not-in`. Strings, numbers, booleans, and finite sets are parsed as typed values rather than guessed by an LLM.
 
-Typical modalities include:
-
-- `MUST`
-- `MUST_NOT`
-- `DELEGATED/MAY`
-- descriptive statements
+Delegation uses `- [scope] subject delegated`; open questions must be marked `[HIGH]` or `[LOW]`.
 
 ### 3. Underspecification and determinacy
 
@@ -838,29 +834,13 @@ An `UNRESOLVED` high-impact decision is a blocker.
 
 Low-impact implementation details should not be demanded simply to make the prompt appear more complete.
 
-### 4. Ambiguity
+### 4. Ambiguity boundary
 
-Not every vague phrase is a blocker.
-
-Ambiguity becomes blocking only when a clause has multiple reasonable interpretations and those interpretations could materially change execution.
-
-This distinction is intended to reduce false positives. Stylistic vagueness is not treated the same way as ambiguity in a dataset split, evaluation target, model choice, or modification boundary.
+The deterministic linter does not claim to understand arbitrary prose ambiguity. A material clause that is not atomic is a `SYNTAX` blocker. Background facts and task descriptions may remain prose, but are outside the formal consistency claim.
 
 ### 5. Consistency
 
-The validator compares requirements that govern the same subject, artifact, variable, or behavior.
-
-The current Skill uses an NLI-inspired distinction:
-
-```text
-ENTAILMENT
-NEUTRAL
-CONTRADICTION
-```
-
-`NEUTRAL` is not considered a contradiction.
-
-Two statements should be treated as contradictory only when their conditions can co-occur and their required effects are mutually incompatible.
+The validator groups constraints by canonical `subject` and `scope`, then intersects equalities, exclusions, numeric bounds, and finite sets. An empty domain is a `CONTRADICTION`, reported with every contributing source line. Named scopes are independent; `*` combines with every scope.
 
 ### 6. Verifiability
 
@@ -874,7 +854,7 @@ A research task may be successfully completed when the experiment validly tests 
 
 ### 7. Minimality
 
-Redundant, duplicated, or low-relevance context is treated as a warning rather than an automatic blocker unless it creates ambiguity or conflict.
+An exactly duplicated atomic requirement produces a warning rather than a blocker.
 
 This follows the project's broader principle that both underspecification and uncontrolled specification growth can be harmful.
 
@@ -1025,13 +1005,9 @@ The benefit is therefore not limited to improving agent behavior. The specificat
 
 ## Limitations and Disadvantages
 
-### 1. V1 semantic validation is still LLM-based
+### 1. The deterministic boundary does not cover arbitrary prose semantics
 
-The current Skill uses structured instructions to reason about ambiguity, determinacy, and contradiction, but it does **not** yet run an independent NLI model, theorem prover, SAT solver, or SMT solver.
-
-Therefore, this repository should not currently be described as formal verification.
-
-The validator itself remains probabilistic and can produce false positives or false negatives.
+V2 implements its schema, parser, typed atomic constraints, and conflict solver in code. It deliberately does not let an LLM silently translate free prose into logic. `READY` proves consistency only for the explicit profile and represented atoms; it does not prove factual truth, requirement completeness, or entity aliasing.
 
 ### 2. No benchmark has been completed yet
 
@@ -1102,31 +1078,30 @@ Skill discovery and invocation behavior can differ between products and agent ru
 
 ## Current Status
 
-**Status: experimental V1**
+**Status: experimental V2**
 
 The current project intentionally favors a small, auditable design over a large feature set.
 
-V1 includes:
+V2 includes:
 
 - full ML prompt grammar;
 - compact ML prompt grammar;
 - project-initialization readiness gate;
 - structural/task-profile checks;
-- high-impact decision coverage;
-- ambiguity checks;
-- NLI-inspired contradiction reasoning;
+- a standalone Markdown parser with source locations;
+- JSON-profile MODE rules;
+- a typed atomic-requirement IR;
+- equality, exclusion, set, and numeric-bound contradiction checks;
+- an explicit high-impact open-question gate;
 - acceptance verifiability;
 - redundancy warnings;
 - explicit `READY` / `NOT_READY` behavior.
 
-V1 does **not** yet include:
+V2 does **not** yet include:
 
-- standalone parser;
-- deterministic schema validator;
 - trained NLI conflict model;
-- requirement AST/IR implementation;
 - SAT/SMT solver;
-- benchmark suite;
+- a real-project benchmark (behavioral regression tests are included);
 - automatic prompt rewriting;
 - automatic high-impact decision selection.
 
@@ -1136,11 +1111,9 @@ The absence of automatic rewriting is intentional. The system is designed to rev
 
 ## Roadmap
 
-### V1 — Prompt-level gate
+### V1 — Prompt-level gate (complete; historical)
 
-Current stage.
-
-Goal: determine whether the conceptual gate improves real ML research and coding workflows before increasing implementation complexity.
+The initial LLM-instruction proof of concept.
 
 Planned testing:
 
@@ -1152,9 +1125,9 @@ Planned testing:
 - introduce redundant context;
 - measure false positives and false negatives.
 
-### V2 — Deterministic structural validator
+### V2 — Deterministic structural validator (current)
 
-Move low-level checks out of LLM reasoning and into code.
+Low-level structure and formalizable conflicts now run in code.
 
 Possible components:
 
@@ -1164,10 +1137,11 @@ schema rules
 MODE-specific required fields
 placeholder detection
 duplicate-section detection
-basic acceptance checks
+typed atomic constraints
+empty-domain contradiction diagnostics
 ```
 
-The Skill would then become a thin orchestration policy that calls the deterministic validator.
+The Skill is a thin orchestration policy that calls the deterministic validator.
 
 ### V3 — Requirement intermediate representation
 
