@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Deterministic linter for the ML Research & Coding Prompt Grammar."""
 
 from __future__ import annotations
@@ -8,10 +7,10 @@ import json
 import math
 import re
 import sys
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
-
+from typing import Any
 
 HEADER_RE = re.compile(r"^([A-Z][A-Z0-9 _/'-]*):\s*(.*)$")
 ATOM_RE = re.compile(
@@ -69,7 +68,9 @@ def load_profile(path: Path) -> dict[str, Any]:
         return json.load(handle)
 
 
-def parse_document(text: str, profile: dict[str, Any]) -> tuple[dict[str, Section], list[Issue]]:
+def parse_document(
+    text: str, profile: dict[str, Any]
+) -> tuple[dict[str, Section], list[Issue]]:
     top_names = set(profile["top_sections"])
     children = {key: set(value) for key, value in profile["children"].items()}
     all_child_names = {name for values in children.values() for name in values}
@@ -83,7 +84,9 @@ def parse_document(text: str, profile: dict[str, Any]) -> tuple[dict[str, Sectio
         match = HEADER_RE.match(stripped)
         if match:
             label, inline = match.groups()
-            is_child = current_top is not None and label in children.get(current_top, set())
+            is_child = current_top is not None and label in children.get(
+                current_top, set()
+            )
             is_top = label in top_names and not is_child
 
             if is_top:
@@ -92,16 +95,20 @@ def parse_document(text: str, profile: dict[str, Any]) -> tuple[dict[str, Sectio
             elif is_child:
                 parent = current_top
             elif label in all_child_names:
-                issues.append(Issue(
-                    "SYNTAX",
-                    line_number,
-                    f"{label} is not valid inside {current_top or 'the document root'}",
-                    label,
-                ))
+                issues.append(
+                    Issue(
+                        "SYNTAX",
+                        line_number,
+                        f"{label} is not valid inside {current_top or 'the document root'}",
+                        label,
+                    )
+                )
                 current = None
                 continue
             elif re.fullmatch(r"[A-Z][A-Z0-9 _/'-]*", label):
-                issues.append(Issue("SYNTAX", line_number, f"unknown section {label}", label))
+                issues.append(
+                    Issue("SYNTAX", line_number, f"unknown section {label}", label)
+                )
                 current = None
                 continue
             else:
@@ -109,13 +116,15 @@ def parse_document(text: str, profile: dict[str, Any]) -> tuple[dict[str, Sectio
 
             if match:
                 if label in sections:
-                    issues.append(Issue(
-                        "SYNTAX",
-                        line_number,
-                        f"duplicate section {label}; first declared at line {sections[label].header_line}",
-                        label,
-                        [sections[label].header_line],
-                    ))
+                    issues.append(
+                        Issue(
+                            "SYNTAX",
+                            line_number,
+                            f"duplicate section {label}; first declared at line {sections[label].header_line}",
+                            label,
+                            [sections[label].header_line],
+                        )
+                    )
                     current = sections[label]
                 else:
                     current = Section(label, parent, line_number)
@@ -138,13 +147,11 @@ def meaningful(line: SourceLine, none_markers: set[str]) -> bool:
     value = strip_bullet(line.text)
     if not value:
         return False
-    if value.startswith("<!--") or value.startswith("#"):
+    if value.startswith(("<!--", "#")):
         return False
     if re.fullmatch(r"\[[^\]]*\]", value):
         return False
-    if re.fullmatch(r"[^:]{1,60}:\s*", value):
-        return False
-    return True
+    return not re.fullmatch(r"[^:]{1,60}:\s*", value)
 
 
 def section_lines(
@@ -165,7 +172,10 @@ def has_content(
     profile: dict[str, Any],
     none_markers: set[str],
 ) -> bool:
-    return any(meaningful(line, none_markers) for line in section_lines(name, sections, profile))
+    return any(
+        meaningful(line, none_markers)
+        for line in section_lines(name, sections, profile)
+    )
 
 
 def first_content(section: Section | None, none_markers: set[str]) -> SourceLine | None:
@@ -190,7 +200,7 @@ def parse_scalar(raw: str) -> Any:
             return raw
         raise ValueError("value with spaces must be a JSON string") from None
     if isinstance(value, (dict, list)):
-        raise ValueError("scalar operator requires a string, number, boolean, or null")
+        raise ValueError("scalar operator requires a string, number, boolean, or null")  # noqa: TRY004
     return value
 
 
@@ -210,7 +220,9 @@ def parse_atom(line: SourceLine, section: str) -> Atom:
             raise ValueError("set members must be scalar values")
     else:
         value = parse_scalar(raw_value)
-    if op in {"<", "<=", ">", ">="} and (not isinstance(value, (int, float)) or isinstance(value, bool)):
+    if op in {"<", "<=", ">", ">="} and (
+        not isinstance(value, (int, float)) or isinstance(value, bool)
+    ):
         raise ValueError("ordered comparisons require a numeric value")
     return Atom(scope, subject, op, value, section, line.number)
 
@@ -258,11 +270,25 @@ def check_structure(
     mode_line = first_content(sections.get("MODE"), none_markers)
     mode: str | None = None
     if mode_line is None:
-        issues.append(Issue("MISSING", sections.get("MODE", Section("MODE", None, 1)).header_line or 1, "MODE has no value", "MODE"))
+        issues.append(
+            Issue(
+                "MISSING",
+                sections.get("MODE", Section("MODE", None, 1)).header_line or 1,
+                "MODE has no value",
+                "MODE",
+            )
+        )
     else:
         mode = strip_bullet(mode_line.text).upper()
         if mode not in profile["modes"]:
-            issues.append(Issue("SYNTAX", mode_line.number, f"MODE must be one of {', '.join(profile['modes'])}", "MODE"))
+            issues.append(
+                Issue(
+                    "SYNTAX",
+                    mode_line.number,
+                    f"MODE must be one of {', '.join(profile['modes'])}",
+                    "MODE",
+                )
+            )
             mode = None
 
     required = list(profile["required"])
@@ -271,9 +297,18 @@ def check_structure(
     for name in required:
         section = sections.get(name)
         if section is None:
-            issues.append(Issue("MISSING", 1, f"required section {name} is absent", name))
+            issues.append(
+                Issue("MISSING", 1, f"required section {name} is absent", name)
+            )
         elif not has_content(name, sections, profile, none_markers):
-            issues.append(Issue("MISSING", section.header_line, f"required section {name} has no substantive value", name))
+            issues.append(
+                Issue(
+                    "MISSING",
+                    section.header_line,
+                    f"required section {name} has no substantive value",
+                    name,
+                )
+            )
 
     if mode:
         child_rules = profile["required_children_by_mode"].get(mode, {})
@@ -281,18 +316,39 @@ def check_structure(
             for name in names:
                 section = sections.get(name)
                 if section is None or section.parent != parent:
-                    issues.append(Issue("MISSING", sections.get(parent, Section(parent, None, 1)).header_line or 1, f"{parent} requires {name}", name))
+                    issues.append(
+                        Issue(
+                            "MISSING",
+                            sections.get(parent, Section(parent, None, 1)).header_line
+                            or 1,
+                            f"{parent} requires {name}",
+                            name,
+                        )
+                    )
                 elif not has_content(name, sections, profile, none_markers):
-                    issues.append(Issue("MISSING", section.header_line, f"{name} has no substantive value", name))
+                    issues.append(
+                        Issue(
+                            "MISSING",
+                            section.header_line,
+                            f"{name} has no substantive value",
+                            name,
+                        )
+                    )
         any_rules = profile["require_any_children_by_mode"].get(mode, {})
         for parent, names in any_rules.items():
-            if not any(has_content(name, sections, profile, none_markers) for name in names if name in sections):
-                issues.append(Issue(
-                    "MISSING",
-                    sections.get(parent, Section(parent, None, 1)).header_line or 1,
-                    f"{parent} requires at least one of {', '.join(names)}",
-                    parent,
-                ))
+            if not any(
+                has_content(name, sections, profile, none_markers)
+                for name in names
+                if name in sections
+            ):
+                issues.append(
+                    Issue(
+                        "MISSING",
+                        sections.get(parent, Section(parent, None, 1)).header_line or 1,
+                        f"{parent} requires at least one of {', '.join(names)}",
+                        parent,
+                    )
+                )
     return mode, issues
 
 
@@ -311,19 +367,23 @@ def check_open_questions(
             continue
         match = QUESTION_RE.match(line.text)
         if not match:
-            issues.append(Issue(
-                "SYNTAX",
-                line.number,
-                "open question must be '- [HIGH|LOW] subject — question'",
-                "OPEN_QUESTIONS",
-            ))
+            issues.append(
+                Issue(
+                    "SYNTAX",
+                    line.number,
+                    "open question must be '- [HIGH|LOW] subject — question'",
+                    "OPEN_QUESTIONS",
+                )
+            )
         elif match.group(1).upper() == "HIGH":
-            issues.append(Issue(
-                "UNRESOLVED",
-                line.number,
-                f"high-impact question {match.group(2)} is unresolved; resolve it or explicitly delegate it",
-                "OPEN_QUESTIONS",
-            ))
+            issues.append(
+                Issue(
+                    "UNRESOLVED",
+                    line.number,
+                    f"high-impact question {match.group(2)} is unresolved; resolve it or explicitly delegate it",
+                    "OPEN_QUESTIONS",
+                )
+            )
     return issues
 
 
@@ -341,12 +401,14 @@ def check_delegated(
         if strip_bullet(line.text).upper() in none_markers:
             continue
         if not DELEGATED_RE.match(line.text):
-            issues.append(Issue(
-                "SYNTAX",
-                line.number,
-                "delegation must be '- [scope] subject delegated'",
-                "DELEGATED",
-            ))
+            issues.append(
+                Issue(
+                    "SYNTAX",
+                    line.number,
+                    "delegation must be '- [scope] subject delegated'",
+                    "DELEGATED",
+                )
+            )
     return issues
 
 
@@ -360,20 +422,24 @@ def check_duplicates(atoms: list[Atom]) -> list[Issue]:
     for atom in atoms:
         key = atom_key(atom)
         if key in seen:
-            issues.append(Issue(
-                "REDUNDANT",
-                atom.line,
-                f"duplicate atomic requirement; first declared at line {seen[key].line}",
-                atom.section,
-                [seen[key].line],
-                "warning",
-            ))
+            issues.append(
+                Issue(
+                    "REDUNDANT",
+                    atom.line,
+                    f"duplicate atomic requirement; first declared at line {seen[key].line}",
+                    atom.section,
+                    [seen[key].line],
+                    "warning",
+                )
+            )
         else:
             seen[key] = atom
     return issues
 
 
-def max_lower(current: tuple[float, bool, Atom] | None, candidate: tuple[float, bool, Atom]) -> tuple[float, bool, Atom]:
+def max_lower(
+    current: tuple[float, bool, Atom] | None, candidate: tuple[float, bool, Atom]
+) -> tuple[float, bool, Atom]:
     if current is None or candidate[0] > current[0]:
         return candidate
     if candidate[0] == current[0] and candidate[1] and not current[1]:
@@ -381,7 +447,9 @@ def max_lower(current: tuple[float, bool, Atom] | None, candidate: tuple[float, 
     return current
 
 
-def min_upper(current: tuple[float, bool, Atom] | None, candidate: tuple[float, bool, Atom]) -> tuple[float, bool, Atom]:
+def min_upper(
+    current: tuple[float, bool, Atom] | None, candidate: tuple[float, bool, Atom]
+) -> tuple[float, bool, Atom]:
     if current is None or candidate[0] < current[0]:
         return candidate
     if candidate[0] == current[0] and candidate[1] and not current[1]:
@@ -453,11 +521,14 @@ def contradiction_for_group(atoms: list[Atom]) -> Issue | None:
     elif lower is not None and upper is not None:
         if lower[0] > upper[0] or (lower[0] == upper[0] and (lower[1] or upper[1])):
             relevant = [lower[2], upper[2]]
+        elif lower[0] == upper[0] and canonical(lower[0]) in denied:
+            relevant = [lower[2], upper[2], denied[canonical(lower[0])]]
     if not relevant and allowed is not None:
         viable = set(allowed) - set(denied)
         if lower is not None or upper is not None:
             viable = {
-                key for key in viable
+                key
+                for key in viable
                 if value_allowed(json.loads(key), None, set(), lower, upper)
             }
         if not viable:
@@ -488,7 +559,9 @@ def check_contradictions(atoms: list[Atom]) -> list[Issue]:
     for atom in atoms:
         by_subject.setdefault(atom.subject, []).append(atom)
     for subject_atoms in by_subject.values():
-        specific_scopes = sorted({atom.scope for atom in subject_atoms if atom.scope != "*"})
+        specific_scopes = sorted(
+            {atom.scope for atom in subject_atoms if atom.scope != "*"}
+        )
         scopes = specific_scopes or ["*"]
         seen_lines: set[tuple[int, ...]] = set()
         for scope in scopes:
@@ -510,20 +583,26 @@ def check_acceptance(
     section = sections.get("ACCEPTANCE")
     if section is None:
         return []
-    acceptance_atoms = [atom for atom in atoms if atom.section in {"ENGINEERING", "RESEARCH"}]
+    acceptance_atoms = [
+        atom for atom in atoms if atom.section in {"ENGINEERING", "RESEARCH"}
+    ]
     direct_lines = [line for line in section.lines if meaningful(line, none_markers)]
     if direct_lines or not acceptance_atoms:
         line = direct_lines[0].number if direct_lines else section.header_line
-        return [Issue(
-            "UNVERIFIABLE",
-            line,
-            "ACCEPTANCE must contain at least one atomic check under ENGINEERING or RESEARCH",
-            "ACCEPTANCE",
-        )]
+        return [
+            Issue(
+                "UNVERIFIABLE",
+                line,
+                "ACCEPTANCE must contain at least one atomic check under ENGINEERING or RESEARCH",
+                "ACCEPTANCE",
+            )
+        ]
     return []
 
 
-def lint(text: str, profile: dict[str, Any]) -> tuple[list[Issue], list[Atom], str | None]:
+def lint(
+    text: str, profile: dict[str, Any]
+) -> tuple[list[Issue], list[Atom], str | None]:
     none_markers = {value.upper() for value in profile["none_markers"]}
     sections, issues = parse_document(text, profile)
     mode, structure_issues = check_structure(sections, profile, none_markers)
@@ -544,14 +623,26 @@ def render_text(path: Path, issues: Iterable[Issue]) -> str:
     warnings = [issue for issue in issues if issue.severity == "warning"]
     lines = ["NOT_READY" if errors else "READY"]
     for issue in errors:
-        related = f"; related lines {', '.join(map(str, issue.related_lines))}" if issue.related_lines else ""
+        related = (
+            f"; related lines {', '.join(map(str, issue.related_lines))}"
+            if issue.related_lines
+            else ""
+        )
         section = f" {issue.section}" if issue.section else ""
-        lines.append(f"[{issue.kind}]{section} {path}:{issue.line} — {issue.message}{related}")
+        lines.append(
+            f"[{issue.kind}]{section} {path}:{issue.line} — {issue.message}{related}"
+        )
     if warnings:
         lines.append("WARNINGS")
         for issue in warnings:
-            related = f"; related lines {', '.join(map(str, issue.related_lines))}" if issue.related_lines else ""
-            lines.append(f"[{issue.kind}] {path}:{issue.line} — {issue.message}{related}")
+            related = (
+                f"; related lines {', '.join(map(str, issue.related_lines))}"
+                if issue.related_lines
+                else ""
+            )
+            lines.append(
+                f"[{issue.kind}] {path}:{issue.line} — {issue.message}{related}"
+            )
     return "\n".join(lines)
 
 

@@ -126,7 +126,8 @@ Prompt-grammar-constrain/
             ├── tests/test_prompt_lint.py
             └── references/
                 ├── contract.md
-                └── design-basis.md
+                ├── design-basis.md
+                └── validation.md
 ```
 
 ### Prompt 模板
@@ -156,6 +157,10 @@ Prompt-grammar-constrain/
 `.agents/skills/prompt-readiness-gate/references/design-basis.md`
 
 保存主要研究依据和设计来源。它与运行时 Skill 分离，避免每次验证都把研究背景加载进 context。
+
+`.agents/skills/prompt-readiness-gate/references/validation.md`
+
+记录标注基准、属性/变形/fuzz 测试、coverage、已知边界和复现命令。当前为 33 个测试、96% 核心脚本 statement coverage，以及 1,000-case 不平衡合成基准的 TP=50、FP=0、TN=950、FN=0；这些指标只代表受控 contract，不代表真实项目外部准确率。
 
 ---
 
@@ -713,7 +718,8 @@ Prompt-grammar-constrain/
             ├── tests/test_prompt_lint.py
             └── references/
                 ├── contract.md
-                └── design-basis.md
+                ├── design-basis.md
+                └── validation.md
 ```
 
 ### Templates
@@ -743,6 +749,10 @@ Syntax guidance loaded only when a user needs to write or repair a structured pr
 `.agents/skills/prompt-readiness-gate/references/design-basis.md`
 
 A short provenance document listing the primary research directions that motivated the validator design. It is separated from the runtime instructions so that normal validation does not require loading the research discussion into context.
+
+`.agents/skills/prompt-readiness-gate/references/validation.md`
+
+The reproducible labeled benchmark, property/metamorphic/fuzz methods, coverage, known boundaries, and threats to validity. Current evidence is 33 passing tests, 96% core-script statement coverage, and TP=50, FP=0, TN=950, FN=0 on a 1,000-case imbalanced synthetic benchmark. These are in-contract metrics, not external real-project accuracy.
 
 ---
 
