@@ -1,156 +1,148 @@
-# ML Research & Coding Prompt Grammar
+# ML Prompt Grammar v2 · Full Contract
+
+GRAMMAR_VERSION: 2
 
 MODE:
 [RESEARCH / IMPLEMENT / MODIFY / DEBUG / EVALUATE]
 
 TASK:
-[明确描述本次只需要 AI 完成的具体任务。不要写长期目标。]
+[本次只要求 Agent 完成的一项任务。]
 
 GOAL:
-[本次任务最终希望达到的结果，或者希望通过本次工作回答的问题。]
+[期望的可观察结果，或本次实验要回答的问题。]
 
 HYPOTHESIS:
-[如果本次任务属于研究实验，写清楚待验证的假设。]
-[推荐结构：If ..., then ..., because ...]
-[非研究实验任务可删除本模块。]
+[仅 RESEARCH：If X, then Y, because Z。]
 
 CURRENT_STATE:
-[只写理解当前任务不可缺少的现状。]
-- Current model:
-- Current pipeline:
-- Current baseline:
-- Current performance:
-- Relevant files:
-- Completed work:
-- Known problems:
+[baseline、相关代码/配置、已知行为；只保留理解任务所必需的事实。]
 
 INPUTS:
-[只保留当前任务实际涉及的项目。]
-- DATA:
-- MODEL:
-- CHECKPOINT:
-- CONFIG:
-- CODE:
-- REFERENCES:
+[数据集、split、模型/checkpoint、config、代码或参考资料；无则删除本节。]
+
+ENTITIES:
+[声明下文所有原子约束使用的 subject。语法：- subject : TYPE aliases ["alias"]。]
+[TYPE = integer | number | boolean | string | path | enum | any；无别名可省略 aliases。]
+- tests.failed : integer
+
+SCOPES:
+[逐行声明所用命名 scope；* 为隐式全局 scope，不声明。]
+[同一 subject 出现在两个 scope 时，必须声明：- a overlaps b 或 - a excludes b。]
+- result
 
 DECISIONS:
-[填写已经由我确定的高影响决策。AI 不应重新选择或修改这些决策。]
-- 
-- 
+[已确定且不得重新选择的高影响决策；原子语法：- [scope] subject OP value。无则 NONE。]
+NONE
 
 CONSTRAINTS:
-[填写当前任务必须遵守的硬性限制。没有相关限制的类别直接删除。]
+[保留适用子节；每行一个原子约束。]
 
 COMPUTE:
-- 
+NONE
 
 DATA:
-- 
+NONE
 
 MODEL:
-- 
+NONE
 
 ENVIRONMENT:
-- 
+NONE
 
 COMPATIBILITY:
-- 
+NONE
 
 REPRODUCIBILITY:
-- 
+NONE
 
 TIME / COST:
-- 
+NONE
 
 CHANGE_SCOPE:
-[修改已有项目时使用。新项目可以删除本模块。]
+[仅 MODIFY；必须填写 MAY_CHANGE 与 MUST_PRESERVE，否则删除本组。]
 
 MAY_CHANGE:
-- 
+- [implementation] component.change = allowed
 
 MUST_PRESERVE:
-- 
+- [*] public_api.changed = false
 
 EXPERIMENT:
-[如果本任务涉及机器学习实验，明确实验设计。非实验任务可以删除。]
+[仅 RESEARCH；v2 必须显式给出以下六项，包括“不训练”等负事实。]
 
 VARIABLE:
-[本次实验主动改变的变量。]
+- [experiment] experiment.variable = treatment-name
 
 CONTROL:
-[为了保证公平比较，需要保持不变的变量。]
+- [experiment] experiment.control = baseline-name
 
 TRAINING:
-- Dataset / split:
-- Training strategy:
-- Hyperparameters:
-- Epochs / steps:
-- Batch size:
-- Optimizer:
-- Learning rate:
-- Seed:
+- [train] training.performed = false
 
 EVALUATION:
-- Evaluation dataset:
-- Evaluation protocol:
-- Baseline:
-- Comparison method:
+- [eval] evaluation.protocol = protocol-id
 
 METRICS:
-- Primary metric:
-- Secondary metrics:
+- [eval] metric.primary = accuracy
 
 SEEDS:
-- 
+- [experiment] reproducibility.seeds in [17, 23, 42]
+
+DEBUG_SPEC:
+[仅 DEBUG。EXPECTED/OBSERVED 必填；REPRODUCTION/EVIDENCE 至少保留一项。]
+
+EXPECTED:
+[预期行为。]
+
+OBSERVED:
+[实际行为。]
+
+REPRODUCTION:
+[最小复现步骤与环境。]
+
+EVIDENCE:
+[已有错误、日志或观察。]
+
+EVALUATION_SPEC:
+[仅 EVALUATE。]
+
+TARGET:
+- [eval] evaluation.target = checkpoint-id
+
+PROTOCOL:
+- [eval] evaluation.protocol = protocol-id
+
+METRICS:
+- [eval] metric.primary = accuracy
 
 OUTPUT:
-[明确要求最终交付的 artifact，而不仅仅是“完成任务”。]
-- Code:
-- Config:
-- Script:
-- Checkpoint:
-- Logs:
-- Metrics:
-- Tables / figures:
-- Report:
-- Documentation:
+[最终交付的文件、报告、模型或数据 artifact。]
 
 ACCEPTANCE:
+[至少一个可判定的原子断言；每个断言必须在 VERIFICATION_PLAN 中有同 scope 或 * 的证据计划。]
 
 ENGINEERING:
-[定义工程上什么情况下可以认为任务完成。]
-- 
-- 
-- 
+- [result] tests.failed = 0
 
 RESEARCH:
-[定义什么情况下本次实验足以回答研究问题。实验结果不需要一定优于 baseline。]
-- 
-- 
-- 
+NONE
+
+VERIFICATION_PLAN:
+[语法：- [scope] subject <- KIND:locator。KIND = command | artifact | metric | observation。]
+[这里只声明如何验证，不会执行命令，也不声称 artifact 已存在。]
+- [result] tests.failed <- command:"python3 -m unittest"
 
 DON'T:
-[只填写真正危险、不可逆或会污染实验的行为。]
-- 
-- 
+[用原子约束表达禁止状态，例如：- [*] data.test_leakage = false。无则 NONE。]
+NONE
 
 DELEGATED:
-[明确知道存在这些决策，但主动授权 AI 自行处理。只放低影响决策。]
-- 
-- 
+[语法：- [scope] subject delegated。无则 NONE。]
+NONE
 
 OPEN_QUESTIONS:
-[填写当前已知但尚未解决的问题。]
-- 
-- 
+[语法：- [HIGH|LOW] subject — question。HIGH 会阻塞执行；无问题写 NONE。]
+NONE
 
 EXECUTION_RULE:
-Before implementation, verify that all high-impact decisions required for this task are either RESOLVED in this document or explicitly DELEGATED.
-
-Do not silently resolve high-impact ambiguity.
-
-Do not change DECISIONS, CONSTRAINTS, MUST_PRESERVE, experimental controls, dataset splits, evaluation protocols, or baselines unless explicitly authorized.
-
-If a high-impact unresolved issue prevents valid implementation or experimentation, stop and report it instead of making an assumption.
-
-Otherwise, execute the task directly and preserve the experimental validity and reproducibility of the project.
+Run the deterministic Prompt Readiness Gate before execution. Preserve the validated specification; never infer a missing high-impact ML decision.
