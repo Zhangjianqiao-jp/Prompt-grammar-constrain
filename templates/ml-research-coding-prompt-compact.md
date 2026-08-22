@@ -1,35 +1,44 @@
-# Compact ML Prompt Contract
+# ML Prompt Grammar v2 · Compact IMPLEMENT Contract
 
-MODE:
-[IMPLEMENT；其他 MODE 使用完整版模板]
+GRAMMAR_VERSION: 2
+MODE: IMPLEMENT
 
 TASK:
-[本次任务]
+[单一任务]
 
 GOAL:
-[期望结果]
+[可观察结果]
 
 CURRENT_STATE:
-[必要现状]
+[必要 baseline、文件和已知行为]
+
+ENTITIES:
+- tests.failed : integer
+
+SCOPES:
+- result
 
 DECISIONS:
-[原子语法：- [scope] subject OP value；无则 NONE]
+NONE
 
 CONSTRAINTS:
-[同上；无则 NONE]
+NONE
 
 OUTPUT:
-[交付物]
+[文件或 artifact]
 
 ACCEPTANCE:
 ENGINEERING:
-[至少一条可判定检查，例如：- [result] tests.failed = 0]
+- [result] tests.failed = 0
+
+VERIFICATION_PLAN:
+- [result] tests.failed <- command:"python3 -m unittest"
 
 DELEGATED:
-[语法：- [scope] subject delegated；无则 NONE]
+NONE
 
 OPEN_QUESTIONS:
-[语法：- [HIGH|LOW] subject — question；无则 NONE]
+NONE
 
 RULE:
 Run the deterministic Prompt Readiness Gate before execution. Preserve the validated specification unchanged.

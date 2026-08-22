@@ -43,6 +43,41 @@ OPEN_QUESTIONS:
 NONE
 """
 
+BASE_V2 = """\
+GRAMMAR_VERSION: 2
+MODE: IMPLEMENT
+TASK:
+Add a deterministic ML checkpoint cache key.
+GOAL:
+Prevent collisions between training configurations.
+CURRENT_STATE:
+The cache currently keys only on model name.
+ENTITIES:
+- cache.hash : enum aliases ["cache.algorithm"]
+- python.version : number
+- tests.failed : integer
+SCOPES:
+- implementation
+- result
+- implementation excludes result
+DECISIONS:
+- [implementation] cache.hash = sha256
+CONSTRAINTS:
+COMPATIBILITY:
+- [implementation] python.version >= 3.11
+OUTPUT:
+Code, tests, and a test report.
+ACCEPTANCE:
+ENGINEERING:
+- [result] tests.failed = 0
+VERIFICATION_PLAN:
+- [result] tests.failed <- command:"python3 -m unittest"
+DELEGATED:
+NONE
+OPEN_QUESTIONS:
+NONE
+"""
+
 
 def errors(text: str):
     issues, _, _ = prompt_lint.lint(text, PROFILE)
@@ -97,13 +132,30 @@ class PromptLintTests(unittest.TestCase):
         self.assertFalse(any(issue.kind == "CONTRADICTION" for issue in errors(text)))
 
     def test_non_finite_number_is_rejected(self):
-        text = BASE.replace("- [*] python.version >= 3.11", "- [*] loss.max <= NaN")
-        self.assertTrue(
-            any(
-                issue.kind == "SYNTAX" and "non-finite" in issue.message
-                for issue in errors(text)
-            )
+        for atom in (
+            "- [*] loss.max <= NaN",
+            "- [*] loss.max <= 1e999",
+            "- [*] loss.max in [0, 1e999]",
+        ):
+            with self.subTest(atom=atom):
+                text = BASE.replace("- [*] python.version >= 3.11", atom)
+                self.assertTrue(
+                    any(
+                        issue.kind == "SYNTAX" and "non-finite" in issue.message
+                        for issue in errors(text)
+                    )
+                )
+
+    def test_very_large_integer_is_canonicalized_without_float_overflow(self):
+        huge = "9" * 1_000
+        text = BASE.replace(
+            "- [*] cache.hash = sha256",
+            f"- [*] batch.tokens = {huge}\n- [*] batch.tokens = {huge}",
         )
+        issues, atoms, _ = prompt_lint.lint(text, PROFILE)
+        huge_atom = next(atom for atom in atoms if atom.subject == "batch.tokens")
+        self.assertEqual(prompt_lint.canonical(huge_atom.value), huge)
+        self.assertFalse(any(issue.kind == "CONTRADICTION" for issue in issues))
 
     def test_set_constraints_can_form_three_line_conflict(self):
         text = BASE.replace(
@@ -256,6 +308,31 @@ METRICS:
         self.assertEqual(code, 2)
         self.assertIn("prompt-lint:", stderr.getvalue())
 
+    def test_invalid_profile_returns_usage_error(self):
+        with (
+            tempfile.NamedTemporaryFile("w", suffix=".md", encoding="utf-8") as prompt,
+            tempfile.NamedTemporaryFile(
+                "w", suffix=".json", encoding="utf-8"
+            ) as profile,
+        ):
+            prompt.write(BASE)
+            prompt.flush()
+            profile.write("{}")
+            profile.flush()
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                code = prompt_lint.main([prompt.name, "--profile", profile.name])
+        self.assertEqual(code, 2)
+        self.assertIn("profile field", stderr.getvalue())
+
+    def test_profile_schema_rejects_invalid_root_and_unknown_atomic_section(self):
+        with self.assertRaisesRegex(TypeError, "root"):
+            prompt_lint.validate_profile([])
+        invalid = dict(PROFILE)
+        invalid["atomic_sections"] = [*PROFILE["atomic_sections"], "MISSING_SECTION"]
+        with self.assertRaisesRegex(ValueError, "unknown sections"):
+            prompt_lint.validate_profile(invalid)
+
     def test_text_cli_reports_not_ready_and_warnings(self):
         text = BASE.replace(
             "- [*] cache.hash = sha256",
@@ -270,6 +347,211 @@ METRICS:
         self.assertEqual(code, 1)
         self.assertIn("NOT_READY", output.getvalue())
         self.assertIn("WARNINGS", output.getvalue())
+
+
+class PromptGrammarV2Tests(unittest.TestCase):
+    def test_v2_ready(self):
+        self.assertEqual(errors(BASE_V2), [])
+
+    def test_aliases_share_one_constraint_domain(self):
+        text = BASE_V2.replace(
+            "- [implementation] cache.hash = sha256",
+            "- [implementation] cache.hash = sha256\n"
+            "- [implementation] cache.algorithm = md5",
+        )
+        self.assertTrue(any(issue.kind == "CONTRADICTION" for issue in errors(text)))
+
+    def test_alias_collision_is_rejected(self):
+        text = BASE_V2.replace(
+            "- python.version : number",
+            '- python.version : number aliases ["cache.algorithm"]',
+        )
+        self.assertTrue(any(issue.kind == "ALIAS_COLLISION" for issue in errors(text)))
+
+    def test_unknown_entity_is_rejected(self):
+        text = BASE_V2.replace("cache.hash = sha256", "cache.digest = sha256")
+        self.assertTrue(any(issue.kind == "UNKNOWN_ENTITY" for issue in errors(text)))
+
+    def test_type_mismatch_is_rejected(self):
+        text = BASE_V2.replace("python.version >= 3.11", "python.version >= fast")
+        self.assertTrue(any(issue.kind == "SYNTAX" for issue in errors(text)))
+
+    def test_integer_rejects_fraction(self):
+        text = BASE_V2.replace("tests.failed = 0", "tests.failed = 0.5")
+        self.assertTrue(any(issue.kind == "TYPE_MISMATCH" for issue in errors(text)))
+
+    def test_unknown_scope_is_rejected(self):
+        text = BASE_V2.replace("[implementation] cache.hash", "[training] cache.hash")
+        self.assertTrue(any(issue.kind == "UNKNOWN_SCOPE" for issue in errors(text)))
+
+    def test_unspecified_scope_relation_blocks_possible_alias_conflict(self):
+        text = BASE_V2.replace(
+            "- implementation excludes result",
+            "- training",
+        ).replace(
+            "- [implementation] cache.hash = sha256",
+            "- [implementation] cache.hash = sha256\n"
+            "- [training] cache.algorithm = md5",
+        )
+        self.assertTrue(any(issue.kind == "AMBIGUOUS_SCOPE" for issue in errors(text)))
+
+    def test_overlapping_scopes_are_solved_together(self):
+        text = BASE_V2.replace(
+            "- implementation excludes result",
+            "- implementation overlaps result",
+        ).replace(
+            "- [result] tests.failed = 0",
+            "- [result] tests.failed = 0\n- [result] cache.algorithm = md5",
+        )
+        self.assertTrue(any(issue.kind == "CONTRADICTION" for issue in errors(text)))
+
+    def test_excluded_scopes_are_independent(self):
+        text = BASE_V2.replace(
+            "- [result] tests.failed = 0",
+            "- [result] tests.failed = 0\n- [result] cache.algorithm = md5",
+        )
+        self.assertFalse(any(issue.kind == "CONTRADICTION" for issue in errors(text)))
+
+    def test_conflicting_scope_relations_are_rejected(self):
+        text = BASE_V2.replace(
+            "- implementation excludes result",
+            "- implementation excludes result\n- result overlaps implementation",
+        )
+        self.assertTrue(
+            any(issue.kind == "CONTRADICTORY_SCOPE_RELATION" for issue in errors(text))
+        )
+
+    def test_acceptance_requires_matching_evidence(self):
+        text = BASE_V2.replace("tests.failed <-", "cache.hash <-")
+        self.assertTrue(any(issue.kind == "MISSING_EVIDENCE" for issue in errors(text)))
+
+    def test_evidence_alias_is_canonicalized(self):
+        text = BASE_V2.replace(
+            "- [result] tests.failed = 0",
+            "- [result] cache.hash = sha256",
+        ).replace("tests.failed <-", "cache.algorithm <-")
+        self.assertEqual(errors(text), [])
+
+    def test_unknown_evidence_kind_is_rejected(self):
+        text = BASE_V2.replace("<- command:", "<- magic:")
+        self.assertTrue(
+            any(issue.kind == "UNKNOWN_EVIDENCE_KIND" for issue in errors(text))
+        )
+
+    def test_missing_v2_sections_is_rejected(self):
+        text = BASE_V2.replace("ENTITIES:\n", "")
+        self.assertTrue(
+            any(
+                issue.kind == "MISSING" and issue.section == "ENTITIES"
+                for issue in errors(text)
+            )
+        )
+
+    def test_unsupported_version_is_rejected(self):
+        text = BASE_V2.replace("GRAMMAR_VERSION: 2", "GRAMMAR_VERSION: 99")
+        self.assertTrue(
+            any(issue.kind == "UNSUPPORTED_VERSION" for issue in errors(text))
+        )
+
+    def test_checked_in_v2_examples_are_ready(self):
+        repository = SKILL.parents[2]
+        for name in ("ml-implement-v2.md", "ml-research-v2.md"):
+            with self.subTest(name=name):
+                text = (repository / "examples" / name).read_text(encoding="utf-8")
+                self.assertEqual(errors(text), [])
+
+    def test_ml_semantic_slot_rejects_misfiled_subject(self):
+        repository = SKILL.parents[2]
+        text = (repository / "examples" / "ml-research-v2.md").read_text(
+            encoding="utf-8"
+        )
+        text = text.replace("experiment.variable =", "model.variant =").replace(
+            "- experiment.variable : enum", "- model.variant : enum"
+        )
+        self.assertTrue(any(issue.kind == "ML_SEMANTIC_SLOT" for issue in errors(text)))
+
+    def test_invalid_entity_declarations_are_rejected(self):
+        invalid = [
+            "- cache.hash",
+            "- cache.hash : enum aliases []",
+            '- cache.hash : enum aliases ["bad alias"]',
+            "- cache.hash : enum aliases [not-json]",
+        ]
+        for declaration in invalid:
+            with self.subTest(declaration=declaration):
+                text = BASE_V2.replace(
+                    '- cache.hash : enum aliases ["cache.algorithm"]', declaration
+                )
+                self.assertTrue(any(issue.kind == "SYNTAX" for issue in errors(text)))
+
+    def test_duplicate_entity_is_rejected(self):
+        text = BASE_V2.replace(
+            '- cache.hash : enum aliases ["cache.algorithm"]',
+            '- cache.hash : enum aliases ["cache.algorithm"]\n- cache.hash : enum',
+        )
+        self.assertTrue(any(issue.kind == "DUPLICATE_ENTITY" for issue in errors(text)))
+
+    def test_invalid_scope_declarations_are_rejected(self):
+        cases = {
+            "self relation": "- implementation overlaps implementation",
+            "global declaration": "- *",
+            "malformed": "- implementation maybe result",
+        }
+        for name, declaration in cases.items():
+            with self.subTest(name=name):
+                text = BASE_V2.replace("- implementation", declaration, 1)
+                self.assertTrue(errors(text))
+
+    def test_transitive_overlap_cannot_contain_exclusion(self):
+        text = BASE_V2.replace(
+            "- implementation\n- result\n- implementation excludes result",
+            "- implementation\n"
+            "- result\n"
+            "- evaluation\n"
+            "- implementation overlaps evaluation\n"
+            "- evaluation overlaps result\n"
+            "- implementation excludes result",
+        )
+        self.assertTrue(
+            any(issue.kind == "CONTRADICTORY_SCOPE_MODEL" for issue in errors(text))
+        )
+
+    def test_invalid_verification_entries_are_rejected(self):
+        invalid = [
+            "- tests.failed by command:pytest",
+            "- [result] tests.failed <- command:unquoted locator",
+            "- [result] tests.failed <- command:42",
+            "- [unknown] tests.failed <- command:pytest",
+            "- [result] unknown.subject <- command:pytest",
+        ]
+        for declaration in invalid:
+            with self.subTest(declaration=declaration):
+                text = BASE_V2.replace(
+                    '- [result] tests.failed <- command:"python3 -m unittest"',
+                    declaration,
+                )
+                self.assertTrue(errors(text))
+
+    def test_duplicate_verification_target_warns(self):
+        line = '- [result] tests.failed <- command:"python3 -m unittest"'
+        issues, _, _ = prompt_lint.lint(
+            BASE_V2.replace(line, f"{line}\n{line}"), PROFILE
+        )
+        self.assertTrue(
+            any(
+                issue.kind == "REDUNDANT" and issue.severity == "warning"
+                for issue in issues
+            )
+        )
+
+    def test_empty_grammar_version_is_rejected(self):
+        text = BASE_V2.replace("GRAMMAR_VERSION: 2", "GRAMMAR_VERSION:")
+        self.assertTrue(
+            any(
+                issue.kind == "MISSING" and issue.section == "GRAMMAR_VERSION"
+                for issue in errors(text)
+            )
+        )
 
 
 if __name__ == "__main__":

@@ -1,7 +1,8 @@
 {
-  "profile_version": 1,
+  "profile_version": 2,
   "modes": ["RESEARCH", "IMPLEMENT", "MODIFY", "DEBUG", "EVALUATE"],
   "required": ["TASK", "GOAL", "CURRENT_STATE", "OUTPUT", "ACCEPTANCE"],
+  "required_v2": ["GRAMMAR_VERSION", "ENTITIES", "SCOPES", "VERIFICATION_PLAN"],
   "required_by_mode": {
     "RESEARCH": ["HYPOTHESIS", "EXPERIMENT"],
     "MODIFY": ["CHANGE_SCOPE"],
@@ -22,6 +23,11 @@
       "EVALUATION_SPEC": ["TARGET", "PROTOCOL", "METRICS"]
     }
   },
+  "required_children_by_mode_v2": {
+    "RESEARCH": {
+      "EXPERIMENT": ["VARIABLE", "CONTROL", "TRAINING", "EVALUATION", "METRICS", "SEEDS"]
+    }
+  },
   "require_any_children_by_mode": {
     "DEBUG": {
       "DEBUG_SPEC": ["REPRODUCTION", "EVIDENCE"]
@@ -36,11 +42,23 @@
     "EVALUATION_SPEC": ["TARGET", "PROTOCOL", "METRICS"]
   },
   "top_sections": [
-    "MODE", "TASK", "GOAL", "HYPOTHESIS", "CURRENT_STATE", "INPUTS",
+    "GRAMMAR_VERSION", "MODE", "TASK", "GOAL", "HYPOTHESIS", "CURRENT_STATE", "INPUTS",
+    "ENTITIES", "SCOPES", "VERIFICATION_PLAN",
     "DECISIONS", "CONSTRAINTS", "CHANGE_SCOPE", "EXPERIMENT", "DEBUG_SPEC",
     "EVALUATION_SPEC", "OUTPUT", "ACCEPTANCE", "DON'T", "DELEGATED",
     "OPEN_QUESTIONS", "EXECUTION_RULE", "RULE"
   ],
+  "evidence_kinds": ["command", "artifact", "metric", "observation"],
+  "subject_prefixes_by_section_v2": {
+    "VARIABLE": ["experiment.variable"],
+    "CONTROL": ["experiment.control"],
+    "TRAINING": ["training."],
+    "EVALUATION": ["evaluation."],
+    "METRICS": ["metric."],
+    "SEEDS": ["reproducibility.seed"],
+    "TARGET": ["evaluation.target"],
+    "PROTOCOL": ["evaluation.protocol"]
+  },
   "atomic_sections": [
     "DECISIONS", "CONSTRAINTS", "COMPUTE", "DATA", "MODEL", "ENVIRONMENT",
     "COMPATIBILITY", "REPRODUCIBILITY", "TIME / COST", "MAY_CHANGE",
