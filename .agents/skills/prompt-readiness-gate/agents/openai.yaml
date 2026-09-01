@@ -1,0 +1,7 @@
+interface:
+  display_name: "ML Prompt Readiness Gate"
+  short_description: "Validate first-turn ML prompts before execution"
+  brand_color: "#6F42C1"
+  default_prompt: "Use $prompt-readiness-gate to validate this first-turn ML prompt before planning or execution."
+policy:
+  allow_implicit_invocation: true

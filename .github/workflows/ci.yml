@@ -29,7 +29,12 @@ jobs:
       - name: Static checks
         run: |
           ruff check .agents/skills/prompt-readiness-gate
+          ruff check scripts
           ruff format --check .agents/skills/prompt-readiness-gate
+          ruff format --check scripts
+
+      - name: Validate Skill and plugin distribution
+        run: python scripts/package_plugin.py
 
       - name: Unit, property, metamorphic, and fuzz tests
         run: >-

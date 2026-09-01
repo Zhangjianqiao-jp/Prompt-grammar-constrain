@@ -7,9 +7,12 @@
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![Runtime dependencies](https://img.shields.io/badge/runtime_dependencies-0-2ea44f)
 ![Scope](https://img.shields.io/badge/domain-machine_learning-blue)
+![Codex Skill](https://img.shields.io/badge/Codex-Skill-111827)
+![Plugin](https://img.shields.io/badge/distribution-skills--only_plugin-6f42c1)
 
-[快速开始](#快速开始) · [Grammar v2](#grammar-v2) · [诊断](#诊断模型) ·
-[测试证据](#测试与证据) · [English](#english-overview)
+[安装与调用](#安装与调用) · [快速开始](#快速开始) · [Grammar v2](#grammar-v2) ·
+[诊断](#诊断模型) · [测试证据](#测试与证据) · [发布](#分发与发布边界) ·
+[English](#english-overview)
 
 Prompt Grammar 把用户第一次给出的 ML 任务说明视为一份可静态检查的接口：
 自由文本负责表达意图与背景，真正影响执行的决策、约束、实验条件和验收标准则进入一个小型受控语言。验证器先构建类型化中间表示，再以确定性规则返回
@@ -79,6 +82,40 @@ flowchart LR
 ```
 
 运行时 Skill 保持为薄入口，只说明何时调用 linter、如何处理两个状态以及能力边界。完整语法、研究依据和测试报告按需加载，因此不会在每个 Agent 回合重复消耗大量 context。
+
+## 安装与调用
+
+### 方案 A：从 GitHub 安装 Skill
+
+在 Codex 中调用内置的 skill installer，并给出仓库中的 Skill URL：
+
+```text
+$skill-installer Install prompt-readiness-gate from
+https://github.com/Zhangjianqiao-jp/Prompt-grammar-constrain/tree/main/.agents/skills/prompt-readiness-gate
+```
+
+安装后请新建一个任务，使 Skill 索引重新加载。可以显式调用：
+
+```text
+$prompt-readiness-gate Validate this first-turn ML task prompt before planning or execution: ...
+```
+
+Skill 元数据允许隐式调用；当用户第一次给出结构化 ML 研究或编码 Prompt 时，Codex 也可以依据 Skill 描述自动选择它。普通 follow-up 和非 ML 任务不会触发该门禁。
+
+### 方案 B：安装仓库 Marketplace 中的 Plugin
+
+```bash
+git clone https://github.com/Zhangjianqiao-jp/Prompt-grammar-constrain.git
+cd Prompt-grammar-constrain
+codex plugin marketplace add "$(pwd)"
+codex plugin add prompt-readiness-gate@prompt-grammar
+```
+
+插件是一个无需 MCP、无需凭据的 skills-only package。仓库 marketplace 的策略为 `AVAILABLE`；安装后同样需要新建任务，才能稳定加载新的 Skill。
+
+### 方案 C：只运行确定性 CLI
+
+如果不需要 Agent 自动门禁，可以直接使用零运行时依赖的 linter。
 
 ## 快速开始
 
@@ -281,12 +318,15 @@ are unsatisfiable in scope 'eval'; related lines 22
 
 ## Skill 集成
 
-仓库内 Skill 位于
-[`.agents/skills/prompt-readiness-gate`](.agents/skills/prompt-readiness-gate)。支持项目级 skills 的 Agent runtime 可以直接发现它；其他 runtime 可将该目录复制到相应的 skill 搜索路径。
+仓库内 canonical Skill 位于
+[`./.agents/skills/prompt-readiness-gate`](.agents/skills/prompt-readiness-gate)，可发布副本位于
+[`./plugins/prompt-readiness-gate`](plugins/prompt-readiness-gate)。前者服务于项目级发现和独立 Skill 安装，后者符合 skills-only plugin 的分发结构；CI 会拒绝两份内容不一致的提交。
 
 Skill 的执行协议非常短：保存用户原始首轮 ML 规格、运行确定性 linter、在 `NOT_READY` 时只返回定位诊断并停止、在 `READY` 时继续执行原规格。研究说明和完整 contract 不进入正常验证上下文，只有用户需要修复格式或追溯设计时才加载。
 
-当前 `SKILL.md` 仅 15 行；使用 `o200k_base` 实测为 209 tokens（`cl100k_base` 为 210），其余内容通过 progressive disclosure 按需读取。
+运行入口继续保持 15 行。新增的搜索关键词只位于 frontmatter 与机器可读 UI 元数据中；formal contract、设计依据和验证报告仍通过 progressive disclosure 按需读取，不会常驻每个 Agent 回合的上下文。
+
+调用元数据在 `agents/openai.yaml` 中声明：显示名为 `ML Prompt Readiness Gate`，默认示例显式包含 `$prompt-readiness-gate`，并启用 implicit invocation。Plugin manifest 同时提供检索关键词、能力说明、图标、仓库地址与三个 starter prompts。
 
 ## 测试与证据
 
@@ -299,7 +339,7 @@ Skill 的执行协议非常短：保存用户原始首轮 ML 规格、运行确�
 - 3,000 个 seeded Unicode/ASCII fuzz 文档与超长输入；
 - alias、type、scope、evidence 的 v2 mutation tests；
 - 2,000-case、5% 缺陷率的不平衡合成 benchmark；
-- statement coverage 与两版 Python 回归。
+- statement coverage 与三版 Python 回归。
 
 复现：
 
@@ -308,6 +348,8 @@ python3 -m unittest discover \
   -s .agents/skills/prompt-readiness-gate/tests -v
 
 python3 .agents/skills/prompt-readiness-gate/tests/run_benchmark.py
+
+python3 scripts/package_plugin.py
 ```
 
 2026-08-22 的当前结果：
@@ -347,16 +389,31 @@ Grammar/profile 的意义变化必须提升版本。新的规则不得静默改�
 - 极长字符串已做鲁棒性测试，但当前没有独立的文件大小限制；不应把不受信任的大文件直接暴露给服务端接口；
 - 自定义 profile 属于受信任配置，生产环境应做版本固定和代码审查。
 
+安全问题请遵循 [Security Policy](SECURITY.md)，不要在公开 Issue 中披露尚未修复的可利用漏洞。
+
+## 分发与发布边界
+
+本仓库已经提供三层可发现性：GitHub 代码与文档搜索、可直接安装的项目 Skill、以及可由 Codex 添加的 repo marketplace。Git tag 会触发 release workflow，验证分发一致性并生成独立 plugin ZIP。
+
+“出现在所有 ChatGPT/Codex 用户的通用插件目录”不是 GitHub 配置项。它还需要发布者在 OpenAI Platform 完成身份验证、准备网站/支持/隐私/条款等 listing 信息并通过人工审核。仓库侧准备情况、发布材料与不能自动化的外部步骤见
+[Distribution & Publishing](docs/distribution.md)。在审核通过前，本项目只声明 GitHub/本地/团队 marketplace 可发现，不宣称已进入通用目录。
+
 ## 仓库结构
 
 ```text
 Prompt-grammar-constrain/
 ├── README.md
+├── CONTRIBUTING.md / SECURITY.md
 ├── examples/                         # 可直接 lint 的 v2 样例
 ├── templates/                        # 完整与紧凑 ML 模板
+├── plugins/prompt-readiness-gate/    # 可发布的 skills-only plugin
+├── scripts/package_plugin.py         # canonical ↔ plugin 一致性门禁
 ├── docs/
-│   └── cross-domain-porting-notes.md # 后续领域复用笔记
+│   ├── cross-domain-porting-notes.md # 后续领域复用笔记
+│   └── distribution.md               # 安装、发布与目录提交清单
+├── .agents/plugins/marketplace.json  # repo/team marketplace
 └── .agents/skills/prompt-readiness-gate/
+    ├── agents/openai.yaml             # 搜索、显式/隐式调用元数据
     ├── SKILL.md                       # 低 token 运行入口
     ├── profiles/ml-research.json      # ML profile v2
     ├── scripts/prompt_lint.py         # 零依赖 parser + checker
@@ -424,6 +481,9 @@ Start with the [full template](templates/ml-research-coding-prompt.md), the
 [RESEARCH example](examples/ml-research-v2.md). The formal syntax is in the
 [v2 contract](.agents/skills/prompt-readiness-gate/references/contract.md), and evaluation evidence is documented in the
 [validation report](.agents/skills/prompt-readiness-gate/references/validation.md).
+
+Install it directly with `$skill-installer` from the
+[`prompt-readiness-gate` GitHub directory](https://github.com/Zhangjianqiao-jp/Prompt-grammar-constrain/tree/main/.agents/skills/prompt-readiness-gate), or add this repository as a Codex marketplace and install `prompt-readiness-gate@prompt-grammar`. Then start a new task and invoke `$prompt-readiness-gate` explicitly; eligible first-turn structured ML prompts may also trigger it implicitly.
 
 ## Disclaimer
 
