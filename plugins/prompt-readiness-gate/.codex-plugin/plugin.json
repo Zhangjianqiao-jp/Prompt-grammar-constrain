@@ -1,0 +1,40 @@
+{
+  "name": "prompt-readiness-gate",
+  "version": "0.1.0",
+  "description": "Deterministic first-turn prompt validation for machine-learning research and coding tasks.",
+  "author": {
+    "name": "Zhangjianqiao-jp",
+    "url": "https://github.com/Zhangjianqiao-jp"
+  },
+  "homepage": "https://github.com/Zhangjianqiao-jp/Prompt-grammar-constrain#readme",
+  "repository": "https://github.com/Zhangjianqiao-jp/Prompt-grammar-constrain",
+  "keywords": [
+    "machine-learning",
+    "prompt-validation",
+    "requirements-engineering",
+    "static-analysis",
+    "codex-skill"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "ML Prompt Readiness Gate",
+    "shortDescription": "Validate ML prompts before an agent starts work.",
+    "longDescription": "A deterministic, line-addressed readiness gate for the first structured machine-learning research or coding prompt. It checks grammar completeness, typed constraints, contradictions, unresolved high-impact choices, and acceptance-to-evidence mappings without using an LLM as the test oracle.",
+    "developerName": "Zhangjianqiao-jp",
+    "category": "Productivity",
+    "capabilities": [
+      "Deterministic validation",
+      "Contradiction detection",
+      "Line-addressed diagnostics"
+    ],
+    "websiteURL": "https://github.com/Zhangjianqiao-jp/Prompt-grammar-constrain",
+    "brandColor": "#6F42C1",
+    "composerIcon": "./assets/icon.svg",
+    "logo": "./assets/logo.svg",
+    "defaultPrompt": [
+      "Use $prompt-readiness-gate to validate my first-turn ML task prompt.",
+      "Check this ML experiment prompt for contradictions before execution.",
+      "Explain the line-addressed readiness errors in this ML prompt."
+    ]
+  }
+}

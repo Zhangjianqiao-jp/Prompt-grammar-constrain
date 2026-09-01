@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 220" role="img" aria-labelledby="title description">
+  <title id="title">ML Prompt Readiness Gate</title>
+  <desc id="description">Purple checkmark icon and Prompt Grammar wordmark</desc>
+  <rect width="720" height="220" rx="36" fill="#F7F4FC"/>
+  <rect x="40" y="40" width="140" height="140" rx="32" fill="#6F42C1"/>
+  <path d="M75 112l25 25 48-53" fill="none" stroke="#fff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="215" y="105" fill="#251A35" font-family="ui-sans-serif,system-ui,sans-serif" font-size="48" font-weight="700">Prompt Grammar</text>
+  <text x="218" y="150" fill="#6F42C1" font-family="ui-sans-serif,system-ui,sans-serif" font-size="26" font-weight="600">ML readiness before execution</text>
+</svg>

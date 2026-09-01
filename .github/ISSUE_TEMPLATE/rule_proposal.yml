@@ -1,0 +1,38 @@
+name: ML grammar rule proposal
+description: Propose a deterministic ML prompt rule with evidence and compatibility analysis.
+title: "[Rule]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: failure
+    attributes:
+      label: Failure mode
+      description: What downstream ML error or ambiguity does this prevent?
+    validations:
+      required: true
+  - type: textarea
+    id: semantics
+    attributes:
+      label: Proposed deterministic semantics
+      description: State the pass/fail rule without relying on model judgment.
+    validations:
+      required: true
+  - type: textarea
+    id: examples
+    attributes:
+      label: Positive and negative examples
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and false-positive risk
+      description: Relevant work, corpus evidence, mutation design, and known limitations.
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and token cost
+    validations:
+      required: true
